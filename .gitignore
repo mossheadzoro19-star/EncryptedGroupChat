@@ -1,0 +1,13 @@
+
+.venv/
+__pycache__/
+*.pyc
+*.db
+*.sqlite
+*.sqlite3
+*.key
+client_keys/
+member_keys/
+user_keys/
+*.zip
+.env

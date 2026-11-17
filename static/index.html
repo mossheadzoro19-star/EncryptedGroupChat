@@ -1,0 +1,1017 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>EncryptedGroupChat ♡</title>
+
+<style>
+:root {
+    --yellow:#f6e7a8;
+    --lilac:#dcd0f5;
+    --blue:#b9dff5;
+    --cream:#fff7e8;
+    --peach:#f6d9c9;
+    --ink:#343451;
+    --muted:#77718c;
+    --border:#d4c7df;
+    --green:#4e9675;
+    --red:#bc6574;
+}
+
+* { box-sizing:border-box; }
+
+body {
+    margin:0;
+    min-height:100vh;
+    font-family:"Segoe UI",sans-serif;
+    color:var(--ink);
+    background:
+      radial-gradient(ellipse at top left,#e5dafa 0%,transparent 40%),
+      radial-gradient(ellipse at bottom right,#c8e8f7 0%,transparent 38%),
+      linear-gradient(135deg,#f9edc5,#e8dcf7 52%,#cce9f6);
+    background-attachment:fixed;
+}
+
+button,input { font:inherit; }
+
+button {
+    border:1px solid var(--border);
+    border-radius:12px;
+    padding:11px 15px;
+    color:var(--ink);
+    background:var(--lilac);
+    font-weight:600;
+    cursor:pointer;
+}
+
+button:hover { filter:brightness(.97); }
+button:disabled { opacity:.55; cursor:not-allowed; }
+
+input {
+    width:100%;
+    padding:12px;
+    margin:6px 0 12px;
+    border:1px solid var(--border);
+    border-radius:11px;
+    background:var(--cream);
+    color:var(--ink);
+    outline:none;
+}
+
+input:focus { border-color:#a995d7; }
+label { display:block; font-size:13px; font-weight:600; }
+
+.hidden { display:none!important; }
+.primary { background:var(--lilac); }
+.yellow-button { background:var(--yellow); }
+.blue-button { background:var(--blue); }
+.danger { background:#f4d0d5; }
+
+.panel {
+    background:var(--cream);
+    border:1px solid var(--border);
+    border-radius:20px;
+    box-shadow:0 8px 22px #6f64901a;
+}
+
+h1,h2,h3 { font-family:Georgia,serif; font-weight:500; }
+h1 { font-size:clamp(27px,4vw,38px); }
+h2 { font-size:24px; }
+h3 { font-size:18px; }
+p { line-height:1.6; }
+.subtitle,.muted { color:var(--muted); }
+.eyebrow { font-size:11px; letter-spacing:2px; color:var(--muted); text-transform:uppercase; }
+.brand-mark { display:inline-grid; place-items:center; width:44px; height:44px; border-radius:14px; background:var(--yellow); font-size:22px; }
+
+.login-layout { min-height:100vh; display:grid; place-items:center; padding:20px; }
+.login-card { width:min(440px,100%); padding:32px; }
+.login-brand { text-align:center; margin-bottom:25px; }
+.login-brand p { color:var(--muted); font-size:14px; }
+.login-actions { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+.full-button { width:100%; }
+.login-foot { margin-top:20px; text-align:center; color:var(--muted); font-size:12px; line-height:1.8; }
+#loginStatus { margin-top:14px; font-size:13px; overflow-wrap:anywhere; }
+
+.app-layout {
+    width:min(1200px,96%);
+    margin:24px auto;
+    display:grid;
+    grid-template-columns:225px minmax(0,1fr);
+    gap:17px;
+    align-items:start;
+}
+
+.sidebar { padding:20px 14px; position:sticky; top:15px; }
+.brand { display:flex; align-items:center; gap:10px; margin-bottom:22px; }
+.brand strong { font-family:Georgia,serif; }
+.brand small { display:block; margin-top:4px; color:var(--muted); }
+.nav-button { display:block; width:100%; text-align:left; background:transparent; border-color:transparent; margin:5px 0; font-weight:500; }
+.nav-button.active,.nav-button:hover { background:#e8def8; }
+.sidebar-note { padding:13px; margin-top:22px; border-radius:14px; background:var(--blue); font-size:12px; }
+.main-content { min-width:0; }
+
+.topbar {
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    flex-wrap:wrap;
+    gap:12px;
+    padding:18px 22px;
+    margin-bottom:16px;
+    background:var(--cream);
+    border:1px solid var(--border);
+    border-radius:19px;
+}
+.topbar h2 { margin:5px 0; }
+.topbar p { margin:0; }
+.content-section { margin-bottom:18px; }
+.section-heading { display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:13px; }
+.section-heading h2 { margin:0; }
+
+.grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:13px; }
+.card { min-width:0; padding:18px; border:1px solid var(--border); border-radius:17px; background:var(--cream); box-shadow:0 5px 14px #6f649012; }
+.card.lilac { background:#e8def8; }
+.card.blue { background:#d8edfa; }
+.card.yellow { background:#fbefc8; }
+.card.peach { background:#f7e0d2; }
+.card h3 { margin-bottom:8px; }
+.card p { color:var(--muted); font-size:13px; }
+.card button { margin-top:5px; }
+.status { margin-top:12px; padding:11px 13px; border-radius:11px; background:#fbefc8; font-size:12px; line-height:1.6; overflow-wrap:anywhere; white-space:pre-line; }
+.group-info { padding:13px; margin-top:12px; border-radius:12px; background:#e7def5; font-size:13px; line-height:1.8; white-space:pre-line; }
+
+.chat-panel { overflow:hidden; }
+.chat-heading { padding:18px; background:var(--blue); border-bottom:1px solid var(--border); display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px; }
+.chat-heading h2 { margin:5px 0; }
+.chat-heading p { margin:0; font-size:13px; color:var(--muted); }
+.chat-tools { display:flex; gap:8px; flex-wrap:wrap; }
+.messages { min-height:200px; max-height:430px; overflow-y:auto; padding:18px; background:#e8e1f5; }
+.message { width:fit-content; max-width:88%; padding:12px 14px; margin-bottom:12px; border:1px solid #c9bde2; border-radius:15px 15px 15px 5px; background:#fff0ce; overflow-wrap:anywhere; }
+.message.mine { margin-left:auto; background:#cce8f8; border-color:#a7d3ec; border-radius:15px 15px 5px 15px; }
+.message-header { font-size:11px; color:var(--muted); margin-bottom:6px; }
+.message-text { white-space:pre-wrap; line-height:1.6; }
+.verified { color:var(--green); font-weight:700; }
+.rejected { color:var(--red); font-weight:700; }
+.send-area { padding:15px; background:var(--cream); border-top:1px solid var(--border); }
+.row { display:flex; gap:9px; align-items:center; }
+.row input { flex:1; min-width:0; margin:0; }
+.security-strip { padding:15px; background:#d7eafa; border-top:1px solid var(--border); color:#4d5575; font-size:12px; line-height:2; }
+.management { margin-top:18px; }
+
+@media(max-width:780px) {
+    .app-layout { grid-template-columns:1fr; width:94%; margin:12px auto; }
+    .sidebar { position:static; padding:14px; }
+    .brand { margin-bottom:12px; }
+    .sidebar-nav { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:5px; }
+    .nav-button { text-align:center; font-size:12px; padding:10px 4px; margin:0; }
+    .sidebar-note { margin-top:12px; }
+}
+
+@media(max-width:520px) {
+    .login-card { padding:23px 18px; }
+    .grid { grid-template-columns:1fr; }
+    .row { flex-wrap:wrap; }
+    .row input { flex-basis:100%; }
+    .row button { flex:1; }
+    .topbar,.chat-heading { padding:15px; }
+}
+</style>
+</head>
+
+<body>
+
+<!-- LOGIN -->
+<div id="authScreen" class="login-layout">
+  <div class="panel login-card">
+    <div class="login-brand">
+      <div class="brand-mark">🔐</div>
+      <p>୨୧ ·˚ ༘ ♡ ⋆｡˚</p>
+      <h1>EncryptedGroupChat</h1>
+      <p>Your little corner for private conversations.</p>
+    </div>
+
+    <label for="username">Username</label>
+    <input id="username" autocomplete="username" placeholder="Enter username">
+
+    <label for="password">Password</label>
+    <input id="password" type="password" autocomplete="current-password" placeholder="Enter password">
+
+    <div class="login-actions">
+      <button class="primary" onclick="login()">Log in ♡</button>
+      <button class="yellow-button" onclick="register()">Create account</button>
+    </div>
+
+    <div id="loginStatus" role="status"></div>
+    <div class="login-foot">🔒 Secure group communication<br>✿ Made with cryptography ✿</div>
+  </div>
+</div>
+
+<!-- APPLICATION -->
+<div id="appScreen" class="app-layout hidden">
+  <aside class="panel sidebar">
+    <div class="brand">
+      <div class="brand-mark">🔐</div>
+      <div><strong>EncryptedGroupChat</strong><small>Your safe space ♡</small></div>
+    </div>
+
+    <nav class="sidebar-nav">
+      <button class="nav-button active" onclick="showSection('homeSection',this)">🏡 Home</button>
+      <button class="nav-button" onclick="showSection('groupsSection',this);loadGroups()">♡ Groups</button>
+      <button class="nav-button" onclick="showSection('createSection',this)">✿ Create Group</button>
+      <button class="nav-button" onclick="showSection('requestsSection',this)">💌 Join Requests</button>
+      <button class="nav-button" onclick="showSection('chatSection',this)">🔐 Secure Chat</button>
+    </nav>
+
+    <div class="sidebar-note">
+      <strong>Security reminder ♡</strong>
+      <p>Encrypted messages, signatures, replay protection, and group-key rotation.</p>
+    </div>
+    <button class="danger full-button" style="margin-top:15px" onclick="logout()">Log out ↗</button>
+  </aside>
+
+  <main class="main-content">
+    <header class="topbar">
+      <div>
+        <div class="eyebrow">A secure little space</div>
+        <h2>Hey, <span id="welcomeUsername">friend</span> ♡</h2>
+        <p class="subtitle">Your conversations stay protected.</p>
+      </div>
+      <div class="brand-mark">🌷</div>
+    </header>
+
+    <!-- HOME -->
+    <section id="homeSection" class="content-section">
+      <div class="section-heading"><h2>Your space ☁</h2></div>
+      <div class="grid">
+        <div class="card lilac"><h3>Your groups ♡</h3><p>View your groups and conversations.</p><button onclick="showSection('groupsSection');loadGroups()">View groups →</button></div>
+        <div class="card yellow"><h3>Create a group ✿</h3><p>Start a secure group conversation.</p><button class="yellow-button" onclick="showSection('createSection')">Create group →</button></div>
+        <div class="card blue"><h3>Join a group 💌</h3><p>Request access to an existing group.</p><button class="blue-button" onclick="showSection('requestsSection')">Request access →</button></div>
+        <div class="card peach"><h3>Security first 🔐</h3><p>Check group information and key status.</p><button onclick="showSection('chatSection')">Open secure chat →</button></div>
+      </div>
+    </section>
+
+    <!-- GROUPS -->
+    <section id="groupsSection" class="content-section hidden">
+      <div class="section-heading"><h2>Groups ♡</h2><button onclick="loadGroups()">↻ Refresh</button></div>
+      <p class="subtitle">Open a group you belong to, or request access to another group.</p>
+      <div id="groupsList" class="grid"></div>
+      <div id="groupsStatus" class="status" role="status"></div>
+    </section>
+
+    <!-- CREATE GROUP -->
+    <section id="createSection" class="content-section hidden">
+      <div class="section-heading"><h2>Create a group ✿</h2></div>
+      <div class="card lilac">
+        <label for="newGroupName">Group name</label>
+        <input id="newGroupName" placeholder="e.g. My little circle">
+        <button onclick="createGroup()">Create group ♡</button>
+        <div id="createGroupStatus" class="status" role="status"></div>
+      </div>
+    </section>
+
+    <!-- JOIN REQUESTS -->
+    <section id="requestsSection" class="content-section hidden">
+      <div class="section-heading"><h2>Join requests 💌</h2></div>
+      <div class="grid">
+        <div class="card lilac">
+          <h3>Request to join</h3>
+          <p>Send a request to the group admin.</p>
+          <label for="joinGroupId">Group ID</label>
+          <input id="joinGroupId" type="number" min="1" placeholder="Enter group ID">
+          <button onclick="sendJoinRequest()">Request to join →</button>
+          <div id="joinRequestStatus" class="status" role="status"></div>
+        </div>
+        <div class="card blue">
+          <h3>Review requests</h3>
+          <p>Only the group admin can review requests.</p>
+          <label for="requestsAdminGroupId">Your group ID</label>
+          <input id="requestsAdminGroupId" type="number" min="1" placeholder="Enter your group ID">
+          <button class="blue-button" onclick="loadJoinRequests()">View requests</button>
+          <div id="adminRequestsStatus" class="status" role="status"></div>
+        </div>
+      </div>
+      <div id="joinRequestsList" class="grid" style="margin-top:15px"></div>
+    </section>
+
+    <!-- CHAT -->
+    <section id="chatSection" class="content-section hidden">
+      <div class="panel chat-panel">
+        <div class="chat-heading">
+          <div>
+            <div class="eyebrow">Your private conversation</div>
+            <h2>Secure chat ♡</h2>
+            <p>Group ID: <span id="chatGroupLabel">Not selected</span></p>
+          </div>
+          <div class="chat-tools">
+            <button class="blue-button" onclick="refreshGroupInfo()">Members</button>
+            <button onclick="loadMessages()">↻ Refresh</button>
+          </div>
+        </div>
+
+        <div id="messages" class="messages">
+          <p style="text-align:center;color:#77718c">Your messages will appear here. ☁</p>
+        </div>
+
+        <div class="send-area">
+          <div class="row">
+            <input id="messageInput" placeholder="Write a secure message..." onkeydown="handleEnter(event)">
+            <button onclick="sendMessage()">Send ↑</button>
+          </div>
+          <div id="status" class="status" role="status">Ready when you are ♡</div>
+        </div>
+
+        <div class="security-strip">
+          🔒 AES-256-GCM encryption<br>
+          ✍ Ed25519 signature verification<br>
+          🛡 Replay and tampering protection<br>
+          🔑 Group-key rotation on membership changes
+        </div>
+      </div>
+
+      <div class="management">
+        <div class="section-heading" style="margin-top:18px"><h2>Group management ✿</h2></div>
+        <div class="grid">
+          <div class="card yellow">
+            <h3>Group information</h3>
+            <button onclick="refreshGroupInfo()">Refresh information</button>
+            <div id="groupInfo" class="group-info">Select a group to view information.</div>
+          </div>
+          <div class="card lilac">
+            <h3>Add a member</h3>
+            <label for="addMemberUsername">Username</label>
+            <input id="addMemberUsername" placeholder="Username to add">
+            <button onclick="addMember()">Add member ♡</button>
+          </div>
+          <div class="card peach">
+            <h3>Remove a member</h3>
+            <label for="removeMemberUsername">Username</label>
+            <input id="removeMemberUsername" placeholder="Username to remove">
+            <button class="danger" onclick="removeMember()">Remove member</button>
+          </div>
+          <div class="card blue">
+            <h3>Key status 🔑</h3>
+            <button class="blue-button" onclick="checkKeyStatus()">Check key status</button>
+            <div id="keyStatus" class="group-info">No key status checked yet.</div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<script>
+"use strict";
+
+const API_URL = "";
+let currentUsername = "";
+let currentGroupId = null;
+let currentGroupName = "";
+let currentRole = "none";
+
+async function apiRequest(path, options = {}) {
+    const response = await fetch(API_URL + path, options);
+    let data;
+    try {
+        data = await response.json();
+    } catch {
+        throw new Error("The server returned an unexpected response.");
+    }
+
+    if (!response.ok) {
+        throw new Error(data.detail || data.message || "Request failed.");
+    }
+
+    return data;
+}
+
+function postJSON(path, body) {
+    return apiRequest(path, {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify(body)
+    });
+}
+
+function setText(id, value) {
+    const element = document.getElementById(id);
+    if (element) element.textContent = value ?? "";
+}
+
+function setStatus(message, id = "status") {
+    setText(id, message);
+}
+
+function showApplication(username) {
+    currentUsername = username;
+    document.getElementById("authScreen").classList.add("hidden");
+    document.getElementById("appScreen").classList.remove("hidden");
+    setText("welcomeUsername", username);
+    showSection("homeSection");
+    loadGroups();
+}
+
+function showLogin() {
+    document.getElementById("authScreen").classList.remove("hidden");
+    document.getElementById("appScreen").classList.add("hidden");
+}
+
+function logout() {
+    currentUsername = "";
+    currentGroupId = null;
+    currentGroupName = "";
+    currentRole = "none";
+    document.getElementById("username").value = "";
+    document.getElementById("password").value = "";
+    setStatus("Logged out successfully.", "loginStatus");
+    showLogin();
+}
+
+function showSection(sectionId, button = null) {
+    document.querySelectorAll(".content-section").forEach(section => {
+        section.classList.add("hidden");
+    });
+
+    const target = document.getElementById(sectionId);
+    if (target) target.classList.remove("hidden");
+
+    document.querySelectorAll(".nav-button").forEach(nav => {
+        nav.classList.remove("active");
+    });
+
+    if (button) {
+        button.classList.add("active");
+    } else {
+        const navButton = [...document.querySelectorAll(".nav-button")]
+            .find(nav => nav.getAttribute("onclick")?.includes(sectionId));
+        if (navButton) navButton.classList.add("active");
+    }
+
+    if (sectionId === "groupsSection") loadGroups();
+    if (sectionId === "requestsSection" && currentUsername) {
+        setStatus("Enter a group ID to review requests, or request access.", "adminRequestsStatus");
+    }
+}
+
+async function register() {
+    const username = document.getElementById("username").value.trim();
+    const password = document.getElementById("password").value;
+
+    if (!username || !password) {
+        setStatus("Enter both username and password.", "loginStatus");
+        return;
+    }
+
+    try {
+        const data = await postJSON("/register", {username, password});
+        setStatus(data.message || "Registration completed.", "loginStatus");
+
+        if (data.username && data.message === "User registered successfully") {
+            showApplication(data.username);
+        }
+    } catch (error) {
+        setStatus(error.message, "loginStatus");
+    }
+}
+
+async function login() {
+    const username = document.getElementById("username").value.trim();
+    const password = document.getElementById("password").value;
+
+    if (!username || !password) {
+        setStatus("Enter both username and password.", "loginStatus");
+        return;
+    }
+
+    try {
+        const data = await postJSON("/login", {username, password});
+
+        if (data.message === "Login successful") {
+            showApplication(data.username || username);
+        } else {
+            setStatus(data.message || "Login failed.", "loginStatus");
+        }
+    } catch (error) {
+        setStatus(error.message, "loginStatus");
+    }
+}
+
+async function createGroup() {
+    const groupName = document.getElementById("newGroupName").value.trim();
+
+    if (!currentUsername) {
+        setStatus("Please log in first.", "createGroupStatus");
+        return;
+    }
+
+    if (!groupName) {
+        setStatus("Enter a group name.", "createGroupStatus");
+        return;
+    }
+
+    try {
+        const data = await postJSON("/groups/create", {
+            group_name: groupName,
+            username: currentUsername
+        });
+
+        if (data.group_id) {
+            setStatus(
+                (data.message || "Group created.") +
+                "\nGroup ID: " + data.group_id +
+                "\nKey version: " + (data.key_version ?? "unknown"),
+                "createGroupStatus"
+            );
+
+            document.getElementById("newGroupName").value = "";
+            await loadGroups();
+            await openGroup(data.group_id, data.group_name || groupName);
+        } else {
+            setStatus(data.message || "Could not create group.", "createGroupStatus");
+        }
+    } catch (error) {
+        setStatus(error.message, "createGroupStatus");
+    }
+}
+
+async function loadGroups() {
+    if (!currentUsername) return;
+
+    const container = document.getElementById("groupsList");
+    container.replaceChildren();
+
+    try {
+        const data = await apiRequest("/groups/list");
+        const groups = data.groups || [];
+
+        if (!groups.length) {
+            container.innerHTML = '<div class="card yellow"><p>No groups found. Create one to get started. ♡</p></div>';
+            return;
+        }
+
+        for (const group of groups) {
+            const card = document.createElement("div");
+            card.className = "card lilac";
+
+            const title = document.createElement("h3");
+            title.textContent = group.group_name || ("Group " + group.group_id);
+
+            const details = document.createElement("p");
+            details.textContent =
+                "Group ID: " + group.group_id +
+                "\nActive members: " + (group.active_members ?? 0) +
+                "\nKey version: v" + (group.key_version ?? "?");
+            details.style.whiteSpace = "pre-line";
+
+            const openButton = document.createElement("button");
+            openButton.textContent = "Open group →";
+            openButton.onclick = () => openListedGroup(group.group_id, group.group_name);
+
+            const requestButton = document.createElement("button");
+            requestButton.className = "blue-button";
+            requestButton.style.marginLeft = "6px";
+            requestButton.textContent = "Request to join";
+            requestButton.onclick = () => {
+                document.getElementById("joinGroupId").value = group.group_id;
+                showSection("requestsSection");
+                setStatus("Group ID filled in. Send your join request.", "joinRequestStatus");
+            };
+
+            card.append(title, details, openButton, requestButton);
+            container.appendChild(card);
+        }
+    } catch (error) {
+        setStatus("Could not load groups: " + error.message, "groupsStatus");
+    }
+}
+
+async function openListedGroup(groupId, groupName = "") {
+    if (!currentUsername) return;
+
+    try {
+        const roleData = await apiRequest(
+            `/groups/role/${encodeURIComponent(groupId)}/${encodeURIComponent(currentUsername)}`
+        );
+
+        if (roleData.role === "none") {
+            document.getElementById("joinGroupId").value = groupId;
+            showSection("requestsSection");
+            setStatus("You are not a member of this group. Request access from its admin.", "joinRequestStatus");
+            return;
+        }
+
+        await openGroup(groupId, groupName);
+    } catch (error) {
+        setStatus("Could not check group membership: " + error.message, "groupsStatus");
+    }
+}
+
+async function openGroup(groupId, groupName = "") {
+    currentGroupId = Number(groupId);
+    currentGroupName = groupName || ("Group " + groupId);
+
+    try {
+        const roleData = await apiRequest(
+            `/groups/role/${encodeURIComponent(currentGroupId)}/${encodeURIComponent(currentUsername)}`
+        );
+
+        currentRole = roleData.role || "none";
+
+        if (currentRole === "none") {
+            setStatus("You are not an active member of this group.", "groupsStatus");
+            return;
+        }
+
+        setText("chatGroupLabel", currentGroupName + " (ID " + currentGroupId + ")");
+        showSection("chatSection");
+        await refreshGroupInfo();
+        await checkKeyStatus();
+        await loadMessages();
+    } catch (error) {
+        setStatus("Could not open group: " + error.message);
+    }
+}
+
+async function sendJoinRequest() {
+    const groupId = Number(document.getElementById("joinGroupId").value);
+
+    if (!currentUsername) {
+        setStatus("Please log in first.", "joinRequestStatus");
+        return;
+    }
+
+    if (!Number.isInteger(groupId) || groupId < 1) {
+        setStatus("Enter a valid group ID.", "joinRequestStatus");
+        return;
+    }
+
+    try {
+        const data = await postJSON("/groups/join-request", {
+            group_id: groupId,
+            username: currentUsername
+        });
+
+        setStatus(data.message || "Join request submitted.", "joinRequestStatus");
+
+        if (data.status === "success") {
+            document.getElementById("requestsAdminGroupId").value = groupId;
+        }
+    } catch (error) {
+        setStatus("Could not send request: " + error.message, "joinRequestStatus");
+    }
+}
+
+async function loadJoinRequests() {
+    if (!currentUsername) {
+        setStatus("Please log in first.", "adminRequestsStatus");
+        return;
+    }
+
+    const groupId = Number(document.getElementById("requestsAdminGroupId").value);
+    const container = document.getElementById("joinRequestsList");
+    container.replaceChildren();
+
+    if (!Number.isInteger(groupId) || groupId < 1) {
+        setStatus("Enter the ID of a group you administer.", "adminRequestsStatus");
+        return;
+    }
+
+    try {
+        const data = await apiRequest(
+            `/groups/${groupId}/join-requests?admin_username=${encodeURIComponent(currentUsername)}`
+        );
+
+        if (data.status === "rejected" || data.message?.startsWith("Only the group admin")) {
+            setStatus(data.message || "Only the group admin can view requests.", "adminRequestsStatus");
+            return;
+        }
+
+        const requests = data.requests || [];
+        setStatus("Found " + requests.length + " request(s) for group " + groupId + ".", "adminRequestsStatus");
+
+        if (!requests.length) {
+            container.innerHTML = '<div class="card yellow"><p>No join requests found for this group.</p></div>';
+            return;
+        }
+
+        for (const request of requests) {
+            const card = document.createElement("div");
+            card.className = "card blue";
+
+            const heading = document.createElement("h3");
+            heading.textContent = request.username || "Unknown user";
+
+            const details = document.createElement("p");
+            details.textContent =
+                "Request ID: " + request.request_id +
+                "\nStatus: " + (request.status || "pending") +
+                (request.created_at ? "\nCreated: " + request.created_at : "");
+            details.style.whiteSpace = "pre-line";
+
+            card.append(heading, details);
+
+            if (request.status === "pending") {
+                const approve = document.createElement("button");
+                approve.textContent = "Approve ♡";
+                approve.onclick = () => decideJoinRequest(groupId, request.request_id, "approve");
+
+                const reject = document.createElement("button");
+                reject.className = "danger";
+                reject.style.marginLeft = "6px";
+                reject.textContent = "Reject";
+                reject.onclick = () => decideJoinRequest(groupId, request.request_id, "reject");
+
+                card.append(approve, reject);
+            }
+
+            container.appendChild(card);
+        }
+    } catch (error) {
+        setStatus("Could not load requests: " + error.message, "adminRequestsStatus");
+    }
+}
+
+async function decideJoinRequest(groupId, requestId, action) {
+    if (!currentUsername) {
+        setStatus("Please log in first.", "adminRequestsStatus");
+        return;
+    }
+
+    const verb = action === "approve" ? "approve" : "reject";
+    if (!confirm("Are you sure you want to " + verb + " this join request?")) return;
+
+    try {
+        const data = await postJSON("/groups/join-request/decision", {
+            group_id: Number(groupId),
+            request_id: Number(requestId),
+            admin_username: currentUsername,
+            action
+        });
+
+        setStatus(data.message || "Join request updated.", "adminRequestsStatus");
+
+        await loadJoinRequests();
+        await loadGroups();
+
+        if (currentGroupId === Number(groupId)) {
+            await refreshGroupInfo();
+            await checkKeyStatus();
+        }
+    } catch (error) {
+        setStatus("Could not update request: " + error.message, "adminRequestsStatus");
+    }
+}
+
+async function addMember() {
+    if (!currentGroupId) {
+        setStatus("Open a group first.");
+        return;
+    }
+
+    const username = document.getElementById("addMemberUsername").value.trim();
+    if (!username) {
+        setStatus("Enter the username to add.");
+        return;
+    }
+
+    if (currentRole !== "admin") {
+        setStatus("Only the group admin can add members.");
+        return;
+    }
+
+    try {
+        const data = await postJSON("/groups/add-member", {
+            group_id: currentGroupId,
+            username,
+            admin_username: currentUsername
+        });
+
+        setStatus(data.message || "Member operation completed.");
+
+        if (data.new_key_version) {
+            setStatus(
+                (data.message || "Member added.") +
+                "\nNew key version: v" + data.new_key_version
+            );
+        }
+
+        document.getElementById("addMemberUsername").value = "";
+        await refreshGroupInfo();
+        await checkKeyStatus();
+    } catch (error) {
+        setStatus("Could not add member: " + error.message);
+    }
+}
+
+async function removeMember() {
+    if (!currentGroupId) {
+        setStatus("Open a group first.");
+        return;
+    }
+
+    const username = document.getElementById("removeMemberUsername").value.trim();
+    if (!username) {
+        setStatus("Enter the username to remove.");
+        return;
+    }
+
+    if (currentRole !== "admin") {
+        setStatus("Only the group admin can remove members.");
+        return;
+    }
+
+    if (username === currentUsername) {
+        setStatus("You cannot remove yourself as the admin.");
+        return;
+    }
+
+    if (!confirm("Remove " + username + " from this group?")) return;
+
+    try {
+        const data = await postJSON("/groups/remove-member", {
+            group_id: currentGroupId,
+            username,
+            admin_username: currentUsername
+        });
+
+        setStatus(data.message || "Member removal completed.");
+
+        if (data.new_key_version) {
+            setStatus(
+                (data.message || "Member removed.") +
+                "\nNew key version: v" + data.new_key_version
+            );
+        }
+
+        document.getElementById("removeMemberUsername").value = "";
+        await refreshGroupInfo();
+        await checkKeyStatus();
+    } catch (error) {
+        setStatus("Could not remove member: " + error.message);
+    }
+}
+
+async function refreshGroupInfo() {
+    if (!currentGroupId) {
+        setStatus("Open a group first.");
+        return;
+    }
+
+    try {
+        const [countData, roleData] = await Promise.all([
+            apiRequest(`/groups/member-count/${currentGroupId}`),
+            apiRequest(`/groups/role/${currentGroupId}/${encodeURIComponent(currentUsername)}`)
+        ]);
+
+        currentRole = roleData.role || "none";
+
+        let info =
+            "Group: " + currentGroupName +
+            "\nGroup ID: " + currentGroupId +
+            "\nActive members: " + (countData.active_members ?? "unknown") +
+            "\nYour role: " + currentRole;
+
+        try {
+            const groupsData = await apiRequest("/groups/list");
+            const group = (groupsData.groups || []).find(
+                item => Number(item.group_id) === Number(currentGroupId)
+            );
+            if (group) info += "\nKey version: v" + group.key_version;
+        } catch (_) {}
+
+        setText("groupInfo", info);
+
+        const adminOnlyButtons = [
+            document.querySelector('button[onclick="addMember()"]'),
+            document.querySelector('button[onclick="removeMember()"]')
+        ];
+
+        adminOnlyButtons.forEach(button => {
+            if (button) button.disabled = currentRole !== "admin";
+        });
+
+        return info;
+    } catch (error) {
+        setText("groupInfo", "Could not load group information: " + error.message);
+    }
+}
+
+async function checkKeyStatus() {
+    if (!currentGroupId || !currentUsername) {
+        setText("keyStatus", "Open a group first.");
+        return;
+    }
+
+    try {
+        const data = await apiRequest(
+            `/groups/key-status/${currentGroupId}/${encodeURIComponent(currentUsername)}`
+        );
+
+        setText(
+            "keyStatus",
+            "Status: " + (data.status || "unknown") +
+            "\nKey version: " + (data.key_version ?? "unknown") +
+            (data.message ? "\n" + data.message : "") +
+            (data.reason ? "\nReason: " + data.reason : "")
+        );
+    } catch (error) {
+        setText("keyStatus", "Could not check key status: " + error.message);
+    }
+}
+
+async function sendMessage() {
+    if (!currentGroupId) {
+        setStatus("Open a group first.");
+        return;
+    }
+
+    const input = document.getElementById("messageInput");
+    const message = input.value.trim();
+
+    if (!message) return;
+
+    try {
+        const data = await postJSON("/messages/send", {
+            group_id: currentGroupId,
+            username: currentUsername,
+            message
+        });
+
+        if (data.message !== "Message encrypted and stored successfully") {
+            setStatus(data.message || "Message could not be sent.");
+            return;
+        }
+
+        input.value = "";
+        setStatus("Message encrypted and sent ♡");
+        await loadMessages();
+    } catch (error) {
+        setStatus("Could not send message: " + error.message);
+    }
+}
+
+function handleEnter(event) {
+    if (event.key === "Enter") {
+        event.preventDefault();
+        sendMessage();
+    }
+}
+
+async function loadMessages() {
+    if (!currentGroupId) {
+        setStatus("Open a group first.");
+        return;
+    }
+
+    const container = document.getElementById("messages");
+    container.replaceChildren();
+
+    try {
+        const data = await apiRequest(`/messages/${currentGroupId}`);
+        const messages = data.messages || [];
+
+        if (!messages.length) {
+            const empty = document.createElement("p");
+            empty.className = "muted";
+            empty.style.textAlign = "center";
+            empty.textContent = "No messages to display yet. Send the first one ♡";
+            container.appendChild(empty);
+            return;
+        }
+
+        for (const message of messages) {
+            const bubble = document.createElement("div");
+            bubble.className = "message";
+
+            const header = document.createElement("div");
+            header.className = "message-header";
+
+            const body = document.createElement("div");
+            body.className = "message-text";
+
+            if (message.status === "verified") {
+                header.classList.add("verified");
+                header.textContent =
+                    "✓ Verified · Sequence " + message.sequence_number +
+                    " · Key v" + message.key_version;
+                body.textContent = message.message || "";
+            } else {
+                header.classList.add("rejected");
+                header.textContent = "⚠ Message rejected";
+                body.textContent = message.reason || "Verification failed.";
+            }
+
+            bubble.append(header, body);
+            container.appendChild(bubble);
+        }
+
+        container.scrollTop = container.scrollHeight;
+    } catch (error) {
+        setStatus("Could not load messages: " + error.message);
+    }
+}
+</script>
+
+</body>
+</html>
