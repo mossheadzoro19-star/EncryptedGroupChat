@@ -154,6 +154,11 @@ p { line-height:1.6; }
 .message.mine .message-sender { color:#315f7a; text-align:right; }
 .message-header { font-size:10px; color:var(--muted); margin-top:7px; margin-bottom:0; }
 .message-text { white-space:pre-wrap; line-height:1.6; }
+.member-row { display:flex; align-items:center; justify-content:space-between; gap:10px; padding:10px 0; border-bottom:1px solid var(--border); flex-wrap:wrap; }
+.member-meta { min-width:120px; }
+.member-actions { display:flex; gap:6px; flex-wrap:wrap; }
+.member-actions button { padding:7px 10px; font-size:12px; }
+.message-delete { display:block; margin-top:7px; margin-left:auto; padding:5px 9px; font-size:11px; background:#f4d0d5; }
 .verified { color:var(--green); font-weight:700; }
 .rejected { color:var(--red); font-weight:700; }
 .send-area { padding:15px; background:var(--cream); border-top:1px solid var(--border); }
@@ -335,6 +340,11 @@ p { line-height:1.6; }
       <div class="management">
         <div class="section-heading" style="margin-top:18px"><h2>Group management ✿</h2></div>
         <div class="grid">
+          <div class="card blue" style="grid-column:1/-1">
+            <h3>Members & permissions</h3>
+            <p>Admins control roles and delegated permissions. Members can add people only when permitted.</p>
+            <div id="groupMembersList" class="member-list"></div>
+          </div>
           <div class="card yellow">
             <h3>Group information</h3>
             <button onclick="refreshGroupInfo()">Refresh information</button>
@@ -371,6 +381,7 @@ let currentUsername = "";
 let currentGroupId = null;
 let currentGroupName = "";
 let currentRole = "none";
+let currentCanAddMembers = false;
 let messagePollTimer = null;
 let messagesLoading = false;
 let lastRenderedMessageSignature = "";
@@ -688,6 +699,7 @@ async function openGroup(groupId, groupName = "") {
         showSection("chatSection");
         await refreshGroupInfo();
         await checkKeyStatus();
+        await loadGroupMembers();
         await loadMessages();
         startMessagePolling();
     } catch (error) {
@@ -837,8 +849,8 @@ async function addMember() {
         return;
     }
 
-    if (currentRole !== "admin") {
-        setStatus("Only the group admin can add members.");
+    if (!currentCanAddMembers) {
+        setStatus("You do not have permission to add members.");
         return;
     }
 
@@ -927,6 +939,7 @@ async function refreshGroupInfo() {
         ]);
 
         currentRole = roleData.role || "none";
+        currentCanAddMembers = Boolean(roleData.can_add_members);
 
         let info =
             "Group: " + currentGroupName +
@@ -944,18 +957,138 @@ async function refreshGroupInfo() {
 
         setText("groupInfo", info);
 
-        const adminOnlyButtons = [
-            document.querySelector('button[onclick="addMember()"]'),
-            document.querySelector('button[onclick="removeMember()"]')
-        ];
+        const addButton = document.querySelector('button[onclick="addMember()"]');
+        const removeButton = document.querySelector('button[onclick="removeMember()"]');
+        if (addButton) addButton.disabled = !currentCanAddMembers;
+        if (removeButton) removeButton.disabled = currentRole !== "admin";
 
-        adminOnlyButtons.forEach(button => {
-            if (button) button.disabled = currentRole !== "admin";
-        });
-
+        await loadGroupMembers();
         return info;
     } catch (error) {
         setText("groupInfo", "Could not load group information: " + error.message);
+    }
+}
+
+async function loadGroupMembers() {
+    if (!currentGroupId || !currentUsername) return;
+    const container = document.getElementById("groupMembersList");
+    if (!container) return;
+
+    try {
+        const data = await apiRequest(
+            `/groups/${currentGroupId}/members?requester_username=${encodeURIComponent(currentUsername)}`
+        );
+        if (data.status === "rejected") {
+            container.textContent = data.message || "Unable to load members.";
+            return;
+        }
+
+        container.replaceChildren();
+        for (const member of data.members || []) {
+            const row = document.createElement("div");
+            row.className = "member-row";
+
+            const meta = document.createElement("div");
+            meta.className = "member-meta";
+            const name = document.createElement("strong");
+            name.textContent = member.username + (member.username === currentUsername ? " (You)" : "");
+            const detail = document.createElement("div");
+            detail.className = "muted";
+            detail.textContent = member.role === "admin"
+                ? "Group admin"
+                : (member.can_add_members ? "Member · Can add members" : "Member");
+            meta.append(name, detail);
+            row.appendChild(meta);
+
+            if (currentRole === "admin" && member.username !== currentUsername) {
+                const actions = document.createElement("div");
+                actions.className = "member-actions";
+
+                const roleButton = document.createElement("button");
+                roleButton.textContent = member.role === "admin" ? "Make member" : "Make admin";
+                roleButton.onclick = () => changeMemberRole(
+                    member.username,
+                    member.role === "admin" ? "member" : "admin"
+                );
+                actions.appendChild(roleButton);
+
+                if (member.role !== "admin") {
+                    const permissionButton = document.createElement("button");
+                    permissionButton.className = "blue-button";
+                    permissionButton.textContent = member.can_add_members
+                        ? "Revoke add permission"
+                        : "Allow adding members";
+                    permissionButton.onclick = () => changeMemberPermission(
+                        member.username,
+                        !member.can_add_members
+                    );
+                    actions.appendChild(permissionButton);
+
+                    const removeButton = document.createElement("button");
+                    removeButton.className = "danger";
+                    removeButton.textContent = "Remove";
+                    removeButton.onclick = async () => {
+                        document.getElementById("removeMemberUsername").value = member.username;
+                        await removeMember();
+                    };
+                    actions.appendChild(removeButton);
+                }
+                row.appendChild(actions);
+            }
+            container.appendChild(row);
+        }
+    } catch (error) {
+        container.textContent = "Could not load members: " + error.message;
+    }
+}
+
+async function changeMemberRole(username, role) {
+    if (currentRole !== "admin") return;
+    if (!confirm(`Change ${username}'s role to ${role}?`)) return;
+    try {
+        const data = await postJSON("/groups/member/role", {
+            group_id: currentGroupId,
+            admin_username: currentUsername,
+            username,
+            role
+        });
+        setStatus(data.message || "Member role updated.");
+        await refreshGroupInfo();
+        await loadGroupMembers();
+    } catch (error) {
+        setStatus("Could not change role: " + error.message);
+    }
+}
+
+async function changeMemberPermission(username, canAddMembers) {
+    if (currentRole !== "admin") return;
+    try {
+        const data = await postJSON("/groups/member/permissions", {
+            group_id: currentGroupId,
+            admin_username: currentUsername,
+            username,
+            can_add_members: canAddMembers
+        });
+        setStatus(data.message || "Member permission updated.");
+        await loadGroupMembers();
+    } catch (error) {
+        setStatus("Could not update permission: " + error.message);
+    }
+}
+
+async function deleteMessage(messageId) {
+    if (currentRole !== "admin") return;
+    if (!confirm("Delete this message for everyone in the group?")) return;
+    try {
+        const data = await postJSON(`/messages/${messageId}/delete`, {
+            group_id: currentGroupId,
+            admin_username: currentUsername
+        });
+        setStatus(data.message || "Message deleted.");
+        lastRenderedMessageSignature = "";
+        await loadMessages();
+    } catch (error) {
+        setStatus("Could not delete message: " + error.message);
     }
 }
 
@@ -1094,7 +1227,11 @@ async function loadMessages(options = {}) {
                 const body = document.createElement("div");
                 body.className = "message-text";
 
-                if (message.status === "verified") {
+                if (message.status === "deleted") {
+                    header.classList.add("rejected");
+                    header.textContent = "🗑 Deleted by group admin · Seq " + message.sequence_number;
+                    body.textContent = "This message was deleted for everyone.";
+                } else if (message.status === "verified") {
                     header.classList.add("verified");
                     header.textContent =
                         "✓ Verified · Seq " + message.sequence_number +
@@ -1108,6 +1245,14 @@ async function loadMessages(options = {}) {
 
                 bubble.classList.toggle("mine", isMine);
                 bubble.append(sender, body, header);
+
+                if (currentRole === "admin" && message.status !== "deleted" && message.message_id) {
+                    const deleteButton = document.createElement("button");
+                    deleteButton.className = "message-delete";
+                    deleteButton.textContent = "Delete for everyone";
+                    deleteButton.onclick = () => deleteMessage(message.message_id);
+                    bubble.appendChild(deleteButton);
+                }
                 container.appendChild(bubble);
             }
         }
