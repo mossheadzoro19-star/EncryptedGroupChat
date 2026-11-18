@@ -89,7 +89,8 @@ p { line-height:1.6; }
 .login-card { width:min(440px,100%); padding:32px; }
 .login-brand { text-align:center; margin-bottom:25px; }
 .login-brand p { color:var(--muted); font-size:14px; }
-.login-actions { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+.login-actions { display:grid; gap:10px; }
+.link-button { display:inline; width:auto; padding:0; border:0; background:transparent; color:#6654a0; text-decoration:underline; font-weight:700; }
 .full-button { width:100%; }
 .login-foot { margin-top:20px; text-align:center; color:var(--muted); font-size:12px; line-height:1.8; }
 #loginStatus { margin-top:14px; font-size:13px; overflow-wrap:anywhere; }
@@ -205,10 +206,14 @@ p { line-height:1.6; }
     <label for="password">Password</label>
     <input id="password" type="password" autocomplete="current-password" placeholder="Enter password">
 
-    <div class="login-actions">
-      <button class="primary" onclick="login()">Log in ♡</button>
-      <button class="yellow-button" onclick="register()">Create account</button>
+    <div id="authModeTitle" class="eyebrow" style="text-align:center;margin-bottom:10px">Welcome back</div>
+    <div class="login-actions" style="grid-template-columns:1fr">
+      <button id="authSubmit" class="primary" onclick="submitAuth()">Log in ♡</button>
     </div>
+    <p style="text-align:center;margin:14px 0 0;font-size:13px">
+      <span id="authSwitchText">New here?</span>
+      <button id="authSwitch" class="link-button" type="button" onclick="toggleAuthMode()">Create an account</button>
+    </p>
 
     <div id="loginStatus" role="status"></div>
     <div class="login-foot">🔒 Secure group communication<br>✿ Made with cryptography ✿</div>
@@ -262,8 +267,11 @@ p { line-height:1.6; }
     <!-- GROUPS -->
     <section id="groupsSection" class="content-section hidden">
       <div class="section-heading"><h2>Groups ♡</h2><button onclick="loadGroups()">↻ Refresh</button></div>
-      <p class="subtitle">Open a group you belong to, or request access to another group.</p>
-      <div id="groupsList" class="grid"></div>
+      <p class="subtitle">Your groups and discoverable groups are separated below. Request access to join a group you don't belong to.</p>
+      <h3>My groups</h3>
+      <div id="myGroupsList" class="grid"></div>
+      <h3 style="margin-top:24px">Discover groups</h3>
+      <div id="discoverGroupsList" class="grid"></div>
       <div id="groupsStatus" class="status" role="status"></div>
     </section>
 
@@ -378,6 +386,7 @@ p { line-height:1.6; }
 
 const API_URL = "";
 let currentUsername = "";
+let authMode = "login";
 let currentGroupId = null;
 let currentGroupName = "";
 let currentRole = "none";
@@ -480,6 +489,23 @@ function showSection(sectionId, button = null) {
     }
 }
 
+function toggleAuthMode() {
+    authMode = authMode === "login" ? "register" : "login";
+    const creating = authMode === "register";
+    setText("authModeTitle", creating ? "Create your account" : "Welcome back");
+    setText("authSubmit", creating ? "Create account ♡" : "Log in ♡");
+    setText("authSwitchText", creating ? "Already registered?" : "New here?");
+    setText("authSwitch", creating ? "Log in" : "Create an account");
+    document.getElementById("password").autocomplete =
+        creating ? "new-password" : "current-password";
+    setStatus("", "loginStatus");
+}
+
+function submitAuth() {
+    if (authMode === "register") register();
+    else login();
+}
+
 async function register() {
     const username = document.getElementById("username").value.trim();
     const password = document.getElementById("password").value;
@@ -563,95 +589,93 @@ async function createGroup() {
 
 async function loadGroups() {
     if (!currentUsername) return;
-
-    const container = document.getElementById("groupsList");
-    const status = document.getElementById("groupsStatus");
-    container.replaceChildren();
+    const mineContainer = document.getElementById("myGroupsList");
+    const discoverContainer = document.getElementById("discoverGroupsList");
+    mineContainer.replaceChildren();
+    discoverContainer.replaceChildren();
     setStatus("Loading groups…", "groupsStatus");
 
     try {
-        const data = await apiRequest("/groups/list");
-        const groups = [...new Map(
-            (data.groups || []).map(group => [Number(group.group_id), group])
-        ).values()];
+        const data = await apiRequest(`/groups/discover/${encodeURIComponent(currentUsername)}`);
+        const groups = data.groups || [];
+        const mine = groups.filter(group => group.my_role !== "none");
+        const discover = groups.filter(group => group.my_role === "none");
 
-        if (!groups.length) {
-            container.innerHTML = '<div class="card yellow"><p>No groups found. Create one to get started. ♡</p></div>';
-            setStatus("", "groupsStatus");
-            return;
-        }
+        const emptyCard = (container, message) => {
+            const card = document.createElement("div");
+            card.className = "card yellow";
+            const p = document.createElement("p");
+            p.textContent = message;
+            card.appendChild(p);
+            container.appendChild(card);
+        };
+        if (!mine.length) emptyCard(mineContainer, "You haven't joined any groups yet.");
+        if (!discover.length) emptyCard(discoverContainer, "No other groups are available yet.");
 
         for (const group of groups) {
-            const roleData = await apiRequest(
-                `/groups/role/${encodeURIComponent(group.group_id)}/${encodeURIComponent(currentUsername)}`
-            );
-            const role = roleData.role || "none";
-
+            const isMember = group.my_role !== "none";
+            const container = isMember ? mineContainer : discoverContainer;
             const card = document.createElement("div");
-            card.className = "card lilac";
-
+            card.className = "card " + (isMember ? "lilac" : "blue");
             const title = document.createElement("h3");
             title.textContent = group.group_name || ("Group " + group.group_id);
-
             const details = document.createElement("p");
-            details.textContent =
-                "Group ID: " + group.group_id +
-                "\nActive members: " + (group.active_members ?? 0) +
-                "\nKey version: v" + (group.key_version ?? "?");
+            details.textContent = "Group ID: " + group.group_id + "\nMembers: " + (group.active_members ?? 0);
             details.style.whiteSpace = "pre-line";
-
             card.append(title, details);
 
-            if (role !== "none") {
-                const roleLabel = document.createElement("p");
-                roleLabel.textContent = role === "admin" ? "You are the group admin" : "You are a member";
-                card.appendChild(roleLabel);
-
-                const openButton = document.createElement("button");
-                openButton.textContent = "Open chat →";
-                openButton.onclick = () => openListedGroup(group.group_id, group.group_name);
-                card.appendChild(openButton);
-
-                if (role === "admin") {
-                    const reviewButton = document.createElement("button");
-                    reviewButton.className = "blue-button";
-                    reviewButton.style.marginLeft = "6px";
-                    reviewButton.textContent = "Review join requests";
-                    reviewButton.onclick = () => {
+            if (isMember) {
+                const role = document.createElement("p");
+                role.textContent = group.my_role === "admin" ? "Group admin" : "Member";
+                card.appendChild(role);
+                const open = document.createElement("button");
+                open.textContent = "Open chat →";
+                open.onclick = () => openListedGroup(group.group_id, group.group_name);
+                card.appendChild(open);
+                if (group.my_role === "admin") {
+                    const review = document.createElement("button");
+                    review.className = "blue-button";
+                    review.style.marginLeft = "6px";
+                    review.textContent = "Join requests";
+                    review.onclick = () => {
                         document.getElementById("requestsAdminGroupId").value = group.group_id;
                         showSection("requestsSection");
                         loadJoinRequests();
                     };
-                    card.appendChild(reviewButton);
+                    card.appendChild(review);
                 }
             } else {
-                const requestButton = document.createElement("button");
-                requestButton.className = "blue-button";
-                requestButton.textContent = "Request to join";
-                requestButton.onclick = async () => {
-                    requestButton.disabled = true;
-                    requestButton.textContent = "Submitting…";
-                    try {
-                        const result = await postJSON("/groups/join-request", {
-                            group_id: Number(group.group_id),
-                            username: currentUsername
-                        });
-                        setStatus(result.message || "Join request submitted.", "groupsStatus");
-                        requestButton.textContent =
-                            result.status === "success" ? "Request pending" : "Request to join";
-                        requestButton.disabled = result.status === "success";
-                    } catch (error) {
-                        requestButton.disabled = false;
-                        requestButton.textContent = "Request to join";
-                        setStatus("Could not send request: " + error.message, "groupsStatus");
-                    }
-                };
-                card.appendChild(requestButton);
+                const request = document.createElement("button");
+                request.className = "blue-button";
+                if (group.request_status === "pending") {
+                    request.textContent = "Request pending";
+                    request.disabled = true;
+                } else if (group.request_status === "approved") {
+                    request.textContent = "Membership approved";
+                    request.disabled = true;
+                } else {
+                    request.textContent = group.request_status === "rejected" ? "Request again" : "Request to join";
+                    request.onclick = async () => {
+                        request.disabled = true;
+                        request.textContent = "Submitting…";
+                        try {
+                            const result = await postJSON("/groups/join-request", {
+                                group_id: Number(group.group_id),
+                                username: currentUsername
+                            });
+                            setStatus(result.message || "Join request submitted.", "groupsStatus");
+                            await loadGroups();
+                        } catch (error) {
+                            request.disabled = false;
+                            request.textContent = "Request to join";
+                            setStatus("Could not send request: " + error.message, "groupsStatus");
+                        }
+                    };
+                }
+                card.appendChild(request);
             }
-
             container.appendChild(card);
         }
-
         setStatus("", "groupsStatus");
     } catch (error) {
         setStatus("Could not load groups: " + error.message, "groupsStatus");
