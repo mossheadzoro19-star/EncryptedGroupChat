@@ -374,7 +374,11 @@ let messagesLoading = false;
 let lastRenderedMessageSignature = "";
 
 async function apiRequest(path, options = {}) {
-    const response = await fetch(API_URL + path, options);
+    // API reads must never be served from the browser's HTTP cache.
+    const response = await fetch(API_URL + path, {
+        cache: "no-store",
+        ...options
+    });
     let data;
     try {
         data = await response.json();
@@ -453,6 +457,11 @@ function showSection(sectionId, button = null) {
     }
 
     if (sectionId === "groupsSection") loadGroups();
+    if (sectionId === "chatSection" && currentGroupId) {
+        startMessagePolling();
+        loadMessages({silent: true});
+    }
+    if (sectionId !== "chatSection") stopMessagePolling();
     if (sectionId === "requestsSection" && currentUsername) {
         setStatus("Enter a group ID to review requests, or request access.", "adminRequestsStatus");
     }
@@ -1015,13 +1024,15 @@ function startMessagePolling() {
 
     // Poll only while this chat is visible. This keeps the two browser sessions
     // in sync without requiring a manual refresh.
+    // Poll continuously while the chat section is open. The request uses
+    // cache: no-store, so each check reaches the FastAPI endpoint.
     messagePollTimer = setInterval(() => {
         const chatVisible =
             !document.getElementById("chatSection").classList.contains("hidden");
         if (!document.hidden && chatVisible) {
             loadMessages({silent: true});
         }
-    }, 2000);
+    }, 1500);
 }
 
 function stopMessagePolling() {
@@ -1039,7 +1050,9 @@ async function loadMessages(options = {}) {
     messagesLoading = true;
 
     try {
-        const data = await apiRequest(`/messages/${requestedGroupId}`);
+        const data = await apiRequest(
+            `/messages/${requestedGroupId}?_poll=${Date.now()}`
+        );
         if (requestedGroupId !== currentGroupId) return;
 
         const messages = data.messages || [];
