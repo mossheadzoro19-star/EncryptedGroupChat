@@ -148,11 +148,11 @@ async def authenticated_api_boundary(request: Request, call_next):
     if len(parts) == 3 and parts[0] == "groups" and parts[1] == "discover":
         if parts[2] != username:
             return JSONResponse({"detail": "Cannot access another user's directory"}, status_code=403)
-    if len(parts) == 3 and parts[0] == "groups" and parts[1] == "role":
-        if parts[2] != username:
+    if len(parts) == 4 and parts[0] == "groups" and parts[1] == "role":
+        if parts[3] != username:
             return JSONResponse({"detail": "Cannot inspect another user's role"}, status_code=403)
-    if len(parts) == 3 and parts[0] == "groups" and parts[1] == "key-status":
-        if parts[2] != username:
+    if len(parts) == 4 and parts[0] == "groups" and parts[1] == "key-status":
+        if parts[3] != username:
             return JSONResponse({"detail": "Cannot inspect another user's key status"}, status_code=403)
     if query.get("admin_username") and query["admin_username"] != username:
         return JSONResponse({"detail": "Admin identity does not match session"}, status_code=403)
@@ -163,8 +163,17 @@ async def authenticated_api_boundary(request: Request, call_next):
     group_id = None
     if len(parts) >= 2 and parts[0] == "groups" and parts[1].isdigit():
         group_id = int(parts[1])
+    elif len(parts) == 3 and parts[0] == "groups" and parts[1] == "member-count" and parts[2].isdigit():
+        group_id = int(parts[2])
     elif len(parts) == 2 and parts[0] == "messages" and parts[1].isdigit():
         group_id = int(parts[1])
+    elif len(parts) == 3 and parts[0] == "messages" and parts[1] == "tamper-test":
+        connection = get_connection()
+        try:
+            row = connection.execute("SELECT group_id FROM messages WHERE id = ?", (int(parts[2]),)).fetchone()
+            group_id = row["group_id"] if row else None
+        finally:
+            connection.close()
     elif len(parts) == 3 and parts[0] == "messages" and parts[2] == "delete":
         connection = get_connection()
         try:
