@@ -116,6 +116,17 @@ def create_group_members_table():
     except sqlite3.OperationalError:
         pass
 
+    # Optional delegated permission: members may add participants only
+    # when an admin explicitly grants this capability.
+    try:
+        connection.execute("""
+            ALTER TABLE group_members
+            ADD COLUMN can_add_members INTEGER NOT NULL DEFAULT 0
+        """)
+        connection.commit()
+    except sqlite3.OperationalError:
+        pass
+
     # Ensure every group with active members has an admin.
     groups = connection.execute(
         "SELECT id FROM groups"
@@ -429,6 +440,25 @@ def create_messages_table():
         connection.execute("""
             ALTER TABLE messages
             ADD COLUMN sender_public_key TEXT
+        """)
+        connection.commit()
+    except sqlite3.OperationalError:
+        pass
+
+    # Soft-delete metadata preserves the signed ciphertext for auditability.
+    try:
+        connection.execute("""
+            ALTER TABLE messages
+            ADD COLUMN deleted INTEGER NOT NULL DEFAULT 0
+        """)
+        connection.commit()
+    except sqlite3.OperationalError:
+        pass
+
+    try:
+        connection.execute("""
+            ALTER TABLE messages
+            ADD COLUMN deleted_by TEXT
         """)
         connection.commit()
     except sqlite3.OperationalError:
