@@ -446,12 +446,19 @@ function showLogin() {
     document.getElementById("appScreen").classList.add("hidden");
 }
 
-function logout() {
+async function logout() {
     stopMessagePolling();
+    try {
+        await postJSON("/logout", {});
+    } catch (error) {
+        console.warn("Server logout could not be confirmed:", error.message);
+    }
     currentUsername = "";
     currentGroupId = null;
     currentGroupName = "";
     currentRole = "none";
+    currentCanAddMembers = false;
+    lastRenderedMessageSignature = "";
     document.getElementById("username").value = "";
     document.getElementById("password").value = "";
     setStatus("Logged out successfully.", "loginStatus");
@@ -1302,6 +1309,20 @@ document.addEventListener("visibilitychange", () => {
         loadMessages({silent: true});
     }
 });
+// Restore the authenticated server session after refresh or opening a new tab.
+(async function restoreSession() {
+    try {
+        const session = await apiRequest("/auth/me");
+        if (session.authenticated && session.username) {
+            showApplication(session.username);
+        } else {
+            showLogin();
+        }
+    } catch (_) {
+        showLogin();
+    }
+})();
+
 </script>
 
 </body>
