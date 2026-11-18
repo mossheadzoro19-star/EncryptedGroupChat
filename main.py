@@ -522,7 +522,7 @@ def get_group_role(group_id: int, username: str):
     try:
         member = connection.execute(
             """
-            SELECT role
+            SELECT role, can_add_members
             FROM group_members
             WHERE group_id = ?
               AND user_id = ?
@@ -535,6 +535,9 @@ def get_group_role(group_id: int, username: str):
             "group_id": group_id,
             "username": username,
             "role": member["role"] if member else "none",
+            "can_add_members": bool(member and (
+                member["role"] == "admin" or member["can_add_members"]
+            )),
         }
     finally:
         connection.close()
