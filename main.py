@@ -1,12 +1,16 @@
 
-from fastapi import FastAPI
-from fastapi.responses import FileResponse
+from fastapi import FastAPI, Request, Response
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 import base64
 import hashlib
+import hmac
+import json
 import os
+import secrets
+import time
 
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 
@@ -27,6 +31,9 @@ from database import (
     get_group_join_requests,
     get_join_request,
     update_join_request_status,
+    store_session,
+    get_valid_session,
+    revoke_session,
 )
 
 from message_crypto import (
@@ -44,6 +51,132 @@ from member_keys import get_or_create_x25519_key, create_group_key_envelope
 
 app = FastAPI()
 create_all_tables()
+
+SESSION_COOKIE = "egc_session"
+SESSION_TTL_SECONDS = 60 * 60 * 12
+COOKIE_SECURE = os.getenv("COOKIE_SECURE", "false").lower() == "true"
+
+
+def issue_session(response: Response, user_id: int):
+    raw_token = secrets.token_urlsafe(48)
+    token_hash = hashlib.sha256(raw_token.encode()).hexdigest()
+    store_session(user_id, token_hash, int(time.time()) + SESSION_TTL_SECONDS)
+    response.set_cookie(
+        key=SESSION_COOKIE,
+        value=raw_token,
+        httponly=True,
+        secure=COOKIE_SECURE,
+        samesite="strict",
+        max_age=SESSION_TTL_SECONDS,
+        path="/",
+    )
+
+
+def _active_group_member(username: str, group_id: int) -> bool:
+    user = get_user(username)
+    if user is None:
+        return False
+    connection = get_connection()
+    try:
+        return connection.execute(
+            "SELECT 1 FROM group_members WHERE group_id = ? AND user_id = ? AND active = 1",
+            (group_id, user["id"]),
+        ).fetchone() is not None
+    finally:
+        connection.close()
+
+
+@app.middleware("http")
+async def authenticated_api_boundary(request: Request, call_next):
+    path = request.url.path
+    public = (
+        path == "/" or path == "/chat" or path == "/login" or
+        path == "/register" or path.startswith("/static/") or
+        path in ("/docs", "/openapi.json", "/redoc")
+    )
+    if public or request.method == "OPTIONS":
+        return await call_next(request)
+
+    raw_token = request.cookies.get(SESSION_COOKIE)
+    if not raw_token:
+        return JSONResponse({"detail": "Authentication required"}, status_code=401)
+
+    token_hash = hashlib.sha256(raw_token.encode()).hexdigest()
+    session = get_valid_session(token_hash)
+    if session is None:
+        response = JSONResponse({"detail": "Session expired or revoked"}, status_code=401)
+        response.delete_cookie(SESSION_COOKIE, path="/")
+        return response
+
+    username = session["username"]
+    request.state.authenticated_user = username
+
+    # Re-bind every client-supplied actor identity to the authenticated session.
+    body_data = {}
+    if request.method in ("POST", "PUT", "PATCH", "DELETE"):
+        raw_body = await request.body()
+        if raw_body:
+            try:
+                body_data = json.loads(raw_body)
+            except (ValueError, UnicodeDecodeError):
+                return JSONResponse({"detail": "Invalid JSON body"}, status_code=400)
+
+        async def receive_body():
+            return {"type": "http.request", "body": raw_body, "more_body": False}
+        request._receive = receive_body
+
+        actor_field = None
+        if path in ("/groups/create", "/groups/join-request", "/messages/send"):
+            actor_field = "username"
+        elif path in (
+            "/groups/join-request/decision", "/groups/add-member",
+            "/groups/remove-member", "/groups/member/role",
+            "/groups/member/permissions"
+        ) or (path.startswith("/messages/") and path.endswith("/delete")):
+            actor_field = "admin_username"
+
+        if actor_field and body_data.get(actor_field) != username:
+            return JSONResponse(
+                {"detail": "The request identity does not match the authenticated session"},
+                status_code=403,
+            )
+
+    parts = [part for part in path.split("/") if part]
+    query = request.query_params
+
+    # Identity in URL paths/query parameters must also match the session.
+    if len(parts) == 3 and parts[0] == "groups" and parts[1] == "discover":
+        if parts[2] != username:
+            return JSONResponse({"detail": "Cannot access another user's directory"}, status_code=403)
+    if len(parts) == 3 and parts[0] == "groups" and parts[1] == "role":
+        if parts[2] != username:
+            return JSONResponse({"detail": "Cannot inspect another user's role"}, status_code=403)
+    if len(parts) == 3 and parts[0] == "groups" and parts[1] == "key-status":
+        if parts[2] != username:
+            return JSONResponse({"detail": "Cannot inspect another user's key status"}, status_code=403)
+    if query.get("admin_username") and query["admin_username"] != username:
+        return JSONResponse({"detail": "Admin identity does not match session"}, status_code=403)
+    if query.get("requester_username") and query["requester_username"] != username:
+        return JSONResponse({"detail": "Requester identity does not match session"}, status_code=403)
+
+    # Enforce membership before returning group-scoped data or actions.
+    group_id = None
+    if len(parts) >= 2 and parts[0] == "groups" and parts[1].isdigit():
+        group_id = int(parts[1])
+    elif len(parts) == 2 and parts[0] == "messages" and parts[1].isdigit():
+        group_id = int(parts[1])
+    elif len(parts) == 3 and parts[0] == "messages" and parts[2] == "delete":
+        connection = get_connection()
+        try:
+            row = connection.execute("SELECT group_id FROM messages WHERE id = ?", (int(parts[1]),)).fetchone()
+            group_id = row["group_id"] if row else None
+        finally:
+            connection.close()
+    if group_id is not None and not _active_group_member(username, group_id):
+        return JSONResponse({"detail": "Active group membership required"}, status_code=403)
+
+    return await call_next(request)
+
 
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
@@ -136,26 +269,38 @@ class MessageDelete(BaseModel):
 
 def hash_password(password):
     salt = os.urandom(16)
-    password_hash = hashlib.pbkdf2_hmac(
-        "sha256",
-        password.encode(),
-        salt,
-        100000,
+    digest = hashlib.scrypt(
+        password.encode("utf-8"),
+        salt=salt,
+        n=2**14,
+        r=8,
+        p=1,
+        dklen=32,
     )
-    return salt.hex() + ":" + password_hash.hex()
+    return "scrypt$" + salt.hex() + "$" + digest.hex()
 
 
 def verify_password(password, stored_password):
     try:
+        if stored_password.startswith("scrypt$"):
+            _, salt_hex, hash_hex = stored_password.split("$")
+            salt = bytes.fromhex(salt_hex)
+            expected = bytes.fromhex(hash_hex)
+            actual = hashlib.scrypt(
+                password.encode("utf-8"),
+                salt=salt,
+                n=2**14,
+                r=8,
+                p=1,
+                dklen=len(expected),
+            )
+            return hmac.compare_digest(actual, expected)
+
+        # Verify and transparently upgrade legacy PBKDF2 records on login.
         salt_hex, hash_hex = stored_password.split(":")
         salt = bytes.fromhex(salt_hex)
-        new_hash = hashlib.pbkdf2_hmac(
-            "sha256",
-            password.encode(),
-            salt,
-            100000,
-        )
-        return new_hash.hex() == hash_hex
+        actual = hashlib.pbkdf2_hmac("sha256", password.encode(), salt, 100000)
+        return hmac.compare_digest(actual.hex(), hash_hex)
     except (ValueError, TypeError):
         return False
 
@@ -333,7 +478,7 @@ def rotate_group_key(group_id, sender_username):
 # -------------------------------------------------
 
 @app.post("/register")
-def register(user: UserRegistration):
+def register(user: UserRegistration, response: Response):
     if not user.username.strip() or not user.password:
         return {"message": "Username and password are required"}
 
@@ -343,8 +488,10 @@ def register(user: UserRegistration):
     if not user_created:
         return {"message": "Username already exists"}
 
+    created_user = get_user(user.username)
     get_or_create_user_signing_key(user.username)
     get_or_create_x25519_key(user.username)
+    issue_session(response, created_user["id"])
 
     return {
         "message": "User registered successfully",
@@ -357,7 +504,7 @@ def register(user: UserRegistration):
 # -------------------------------------------------
 
 @app.post("/login")
-def login(user: UserLogin):
+def login(user: UserLogin, response: Response):
     stored_user = get_user(user.username)
 
     if stored_user is None:
@@ -366,13 +513,40 @@ def login(user: UserLogin):
     if not verify_password(user.password, stored_user["password_hash"]):
         return {"message": "Invalid username or password"}
 
+    # Upgrade older PBKDF2 password records after successful verification.
+    if not stored_user["password_hash"].startswith("scrypt$"):
+        connection = get_connection()
+        try:
+            connection.execute(
+                "UPDATE users SET password_hash = ? WHERE id = ?",
+                (hash_password(user.password), stored_user["id"]),
+            )
+            connection.commit()
+        finally:
+            connection.close()
+
     get_or_create_user_signing_key(user.username)
     get_or_create_x25519_key(user.username)
+    issue_session(response, stored_user["id"])
 
     return {
         "message": "Login successful",
         "username": user.username,
     }
+
+
+@app.post("/logout")
+def logout(request: Request, response: Response):
+    raw_token = request.cookies.get(SESSION_COOKIE)
+    if raw_token:
+        revoke_session(hashlib.sha256(raw_token.encode()).hexdigest())
+    response.delete_cookie(SESSION_COOKIE, path="/", httponly=True, samesite="strict")
+    return {"message": "Logged out"}
+
+
+@app.get("/auth/me")
+def auth_me(request: Request):
+    return {"authenticated": True, "username": request.state.authenticated_user}
 
 
 # -------------------------------------------------
