@@ -487,10 +487,13 @@ def get_group_messages(group_id):
 
     messages = connection.execute(
         """
-        SELECT *
+        SELECT
+            messages.*,
+            users.username AS sender_username
         FROM messages
-        WHERE group_id = ?
-        ORDER BY sequence_number ASC
+        JOIN users ON users.id = messages.sender_id
+        WHERE messages.group_id = ?
+        ORDER BY messages.sequence_number ASC
         """,
         (group_id,)
     ).fetchall()
