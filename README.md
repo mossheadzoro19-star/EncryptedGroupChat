@@ -94,6 +94,28 @@ The main objectives of the project are:
 
 ---
 
+## Where application data is stored
+
+This prototype uses local files in the directory from which the FastAPI application is started:
+
+| Data | Storage location |
+|---|---|
+| Usernames and password hashes | `chat.db` → SQLite `users` table |
+| Group names and key versions | `chat.db` → `groups` table |
+| Membership, roles and add-member permissions | `chat.db` → `group_members` table |
+| Join requests | `chat.db` → `join_requests` table |
+| Encrypted message records, signatures and nonces | `chat.db` → `messages` table |
+| Encrypted group-key envelopes | `chat.db` → `group_key_envelopes` table |
+| Group encryption keys | `client_keys/` |
+| User Ed25519 private signing keys | `user_keys/` |
+| User X25519 private keys | `member_keys/` |
+
+These files are local to the running Codespace or server filesystem. They are not automatically stored in GitHub, Supabase, or a cloud database. The repository's `.gitignore` excludes the database, key files, and key directories from normal Git commits.
+
+**Important security limitation:** this prototype currently stores group keys and users' private keys on the server filesystem. Therefore, despite encrypting messages, it is not a true server-blind end-to-end encrypted system. Do not deploy it with real private conversations or sensitive data.
+
+For a Codespaces demo, stopping and recreating a Codespace can risk losing local data depending on the Codespace lifecycle. Back up `chat.db` and the key directories together if you need to preserve the demo state. Do not commit private keys or the database to a public repository.
+
 ## 5. System Architecture
 
 The system contains a control plane and a data plane.
