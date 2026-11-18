@@ -1,5 +1,6 @@
 
 import sqlite3
+import time
 
 DATABASE_NAME = "chat.db"
 
@@ -628,6 +629,71 @@ def get_active_member_count(group_id):
     return result["member_count"]
 
 
+
+# -------------------------------------------------
+# AUTHENTICATED SESSIONS
+# -------------------------------------------------
+
+def create_sessions_table():
+    connection = get_connection()
+    connection.execute("""
+        CREATE TABLE IF NOT EXISTS user_sessions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            token_hash TEXT NOT NULL UNIQUE,
+            expires_at INTEGER NOT NULL,
+            created_at INTEGER NOT NULL,
+            revoked INTEGER NOT NULL DEFAULT 0
+        )
+    """)
+    connection.execute("""
+        CREATE INDEX IF NOT EXISTS idx_user_sessions_token
+        ON user_sessions(token_hash, revoked, expires_at)
+    """)
+    connection.commit()
+    connection.close()
+
+
+def store_session(user_id, token_hash, expires_at):
+    connection = get_connection()
+    try:
+        connection.execute(
+            "INSERT INTO user_sessions (user_id, token_hash, expires_at, created_at) VALUES (?, ?, ?, ?)",
+            (user_id, token_hash, expires_at, int(time.time())),
+        )
+        connection.commit()
+    finally:
+        connection.close()
+
+
+def get_valid_session(token_hash):
+    connection = get_connection()
+    try:
+        return connection.execute(
+            """
+            SELECT s.id AS session_id, s.user_id, u.username
+            FROM user_sessions s
+            JOIN users u ON u.id = s.user_id
+            WHERE s.token_hash = ? AND s.revoked = 0 AND s.expires_at > ?
+            """,
+            (token_hash, int(time.time())),
+        ).fetchone()
+    finally:
+        connection.close()
+
+
+def revoke_session(token_hash):
+    connection = get_connection()
+    try:
+        connection.execute(
+            "UPDATE user_sessions SET revoked = 1 WHERE token_hash = ?",
+            (token_hash,),
+        )
+        connection.commit()
+    finally:
+        connection.close()
+
+
 # -------------------------------------------------
 # CREATE ALL TABLES
 # -------------------------------------------------
@@ -640,3 +706,4 @@ def create_all_tables():
     create_group_key_envelopes_table()
     create_messages_table()
     create_replay_table()
+    create_sessions_table()
