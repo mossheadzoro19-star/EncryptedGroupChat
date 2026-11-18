@@ -169,3 +169,28 @@ Replay Check
    | Decrypt using Group Key
    v
 Plaintext Message
+
+## Implementation status and security boundaries
+
+The repository is an evolving academic prototype. The title describes the intended design, not a claim that every end-to-end security property is already achieved.
+
+### Implemented in the current branch
+- SQLite persistence for users, groups, memberships, join requests and message records.
+- Password verification with scrypt for new/updated credentials; legacy PBKDF2 hashes are verified and upgraded after successful login.
+- Server-issued, opaque, HttpOnly, SameSite=Strict session cookies with a 12-hour expiry and server-side revocation.
+- Protected API boundary that binds actor usernames in requests to the authenticated session and checks active membership for group-scoped reads.
+- Admin/member role controls and delegated add-member permission.
+- Automatic chat refresh and sender-labelled messages.
+- Initial cryptographic primitive tests, session-storage tests and GitHub Actions CI.
+
+### Not yet implemented / not safe to claim
+- True server-blind end-to-end encryption: the current message receive path decrypts messages on the server, and group/private keys are stored on the server filesystem.
+- Client-generated and client-held X25519/Ed25519 private keys with verified identity-key binding.
+- Browser-side AES-GCM encryption with AAD binding for message/group/sender/sequence/key epoch.
+- WebSocket delivery, authenticated socket subscriptions and revocation of socket channels.
+- Atomic key rotation with recipient-only envelopes and a pending-rotation state.
+- Persistent per-sender replay detection with concurrency-safe sequence allocation.
+- Full security attack lab and real concurrent-user/performance benchmarks.
+- Production deployment controls such as HTTPS termination, rate limiting, monitoring and backup/restore.
+
+**Do not use this prototype for real confidential conversations or claim production-grade E2EE.** The server currently has access to plaintext during message retrieval. The next architectural milestone is moving encryption, decryption and private-key custody to clients before adding WebSockets and attack/performance dashboards.
