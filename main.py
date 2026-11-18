@@ -111,6 +111,25 @@ class JoinRequestDecision(BaseModel):
     action: str
 
 
+class GroupRoleChange(BaseModel):
+    group_id: int
+    admin_username: str
+    username: str
+    role: str
+
+
+class MemberPermissionChange(BaseModel):
+    group_id: int
+    admin_username: str
+    username: str
+    can_add_members: bool
+
+
+class MessageDelete(BaseModel):
+    group_id: int
+    admin_username: str
+
+
 # -------------------------------------------------
 # PASSWORD HASHING
 # -------------------------------------------------
@@ -176,6 +195,17 @@ def create_member_envelope(
 # ADMIN / MEMBERSHIP HELPERS
 # -------------------------------------------------
 
+def get_user_by_id(user_id):
+    connection = get_connection()
+    try:
+        return connection.execute(
+            "SELECT * FROM users WHERE id = ?",
+            (user_id,),
+        ).fetchone()
+    finally:
+        connection.close()
+
+
 def is_group_admin(group_id, username):
     user = get_user(username)
     if user is None:
@@ -195,6 +225,27 @@ def is_group_admin(group_id, username):
             (group_id, user["id"]),
         ).fetchone()
         return member is not None
+    finally:
+        connection.close()
+
+
+def can_member_add_members(group_id, username):
+    user = get_user(username)
+    if user is None:
+        return False
+    connection = get_connection()
+    try:
+        member = connection.execute(
+            """
+            SELECT role, can_add_members
+            FROM group_members
+            WHERE group_id = ? AND user_id = ? AND active = 1
+            """,
+            (group_id, user["id"]),
+        ).fetchone()
+        return bool(member and (
+            member["role"] == "admin" or member["can_add_members"] == 1
+        ))
     finally:
         connection.close()
 
@@ -733,9 +784,9 @@ def decide_join_request(decision: JoinRequestDecision):
 
 @app.post("/groups/add-member")
 def add_member(member: AddMember):
-    if not is_group_admin(member.group_id, member.admin_username):
+    if not can_member_add_members(member.group_id, member.admin_username):
         return {
-            "message": "Only the group admin can add members",
+            "message": "Only an admin or a member granted add-member permission can add members",
             "status": "rejected",
         }
 
@@ -992,6 +1043,149 @@ def send_message(message_data: SendMessage):
 
 
 # -------------------------------------------------
+# GROUP MEMBER MANAGEMENT
+# -------------------------------------------------
+
+@app.get("/groups/{group_id}/members")
+def list_group_members(group_id: int, requester_username: str):
+    requester = get_user(requester_username)
+    if requester is None:
+        return {"status": "rejected", "message": "User does not exist"}
+
+    connection = get_connection()
+    try:
+        active = connection.execute(
+            """
+            SELECT 1 FROM group_members
+            WHERE group_id = ? AND user_id = ? AND active = 1
+            """,
+            (group_id, requester["id"]),
+        ).fetchone()
+        if active is None:
+            return {"status": "rejected", "message": "You are not an active group member"}
+
+        members = connection.execute(
+            """
+            SELECT u.username, gm.role, gm.can_add_members
+            FROM group_members gm
+            JOIN users u ON u.id = gm.user_id
+            WHERE gm.group_id = ? AND gm.active = 1
+            ORDER BY CASE WHEN gm.role = 'admin' THEN 0 ELSE 1 END, u.username
+            """,
+            (group_id,),
+        ).fetchall()
+        return {
+            "group_id": group_id,
+            "members": [
+                {
+                    "username": row["username"],
+                    "role": row["role"],
+                    "can_add_members": bool(row["can_add_members"]),
+                }
+                for row in members
+            ],
+        }
+    finally:
+        connection.close()
+
+
+@app.post("/groups/member/role")
+def change_member_role(change: GroupRoleChange):
+    if not is_group_admin(change.group_id, change.admin_username):
+        return {"status": "rejected", "message": "Only a group admin can change member roles"}
+
+    role = change.role.strip().lower()
+    if role not in ("admin", "member"):
+        return {"status": "rejected", "message": "Role must be admin or member"}
+
+    target = get_user(change.username)
+    if target is None:
+        return {"status": "rejected", "message": "User does not exist"}
+    if change.username == change.admin_username and role == "member":
+        return {"status": "rejected", "message": "You cannot demote yourself"}
+
+    connection = get_connection()
+    try:
+        cursor = connection.execute(
+            """
+            UPDATE group_members
+            SET role = ?, can_add_members = CASE WHEN ? = 'admin' THEN 1 ELSE can_add_members END
+            WHERE group_id = ? AND user_id = ? AND active = 1
+            """,
+            (role, role, change.group_id, target["id"]),
+        )
+        if cursor.rowcount != 1:
+            return {"status": "rejected", "message": "Target is not an active group member"}
+        connection.commit()
+    finally:
+        connection.close()
+
+    return {
+        "status": "success",
+        "message": f"{change.username} is now {role}",
+        "username": change.username,
+        "role": role,
+    }
+
+
+@app.post("/groups/member/permissions")
+def change_member_permissions(change: MemberPermissionChange):
+    if not is_group_admin(change.group_id, change.admin_username):
+        return {"status": "rejected", "message": "Only a group admin can change permissions"}
+
+    target = get_user(change.username)
+    if target is None:
+        return {"status": "rejected", "message": "User does not exist"}
+
+    connection = get_connection()
+    try:
+        cursor = connection.execute(
+            """
+            UPDATE group_members
+            SET can_add_members = ?
+            WHERE group_id = ? AND user_id = ? AND active = 1 AND role != 'admin'
+            """,
+            (1 if change.can_add_members else 0, change.group_id, target["id"]),
+        )
+        if cursor.rowcount != 1:
+            return {"status": "rejected", "message": "Target must be an active non-admin member"}
+        connection.commit()
+    finally:
+        connection.close()
+
+    return {
+        "status": "success",
+        "message": "Add-member permission updated",
+        "username": change.username,
+        "can_add_members": change.can_add_members,
+    }
+
+
+@app.post("/messages/{message_id}/delete")
+def delete_group_message(message_id: int, deletion: MessageDelete):
+    if not is_group_admin(deletion.group_id, deletion.admin_username):
+        return {"status": "rejected", "message": "Only a group admin can delete messages"}
+
+    connection = get_connection()
+    try:
+        cursor = connection.execute(
+            """
+            UPDATE messages
+            SET deleted = 1, deleted_by = ?
+            WHERE id = ? AND group_id = ? AND deleted = 0
+            """,
+            (deletion.admin_username, message_id, deletion.group_id),
+        )
+        if cursor.rowcount != 1:
+            return {"status": "rejected", "message": "Message not found or already deleted"}
+        connection.commit()
+    finally:
+        connection.close()
+
+    return {"status": "success", "message": "Message deleted for everyone"}
+
+
+# -------------------------------------------------
 # RECEIVE / DECRYPT MESSAGES
 # -------------------------------------------------
 
@@ -1009,7 +1203,10 @@ def receive_messages(group_id: int):
             group_key = load_group_key(group_id, message["key_version"])
 
             if group_key is None:
+                sender = get_user_by_id(message["sender_id"])
                 results.append({
+                    "message_id": message["id"],
+                    "sender_username": sender["username"] if sender else "Unknown",
                     "sequence_number": sequence_number,
                     "status": "rejected",
                     "reason": "Group key not available",
@@ -1034,10 +1231,25 @@ def receive_messages(group_id: int):
             )
 
             if not valid_signature:
+                sender = get_user_by_id(message["sender_id"])
                 results.append({
+                    "message_id": message["id"],
+                    "sender_username": sender["username"] if sender else "Unknown",
                     "sequence_number": sequence_number,
                     "status": "rejected",
                     "reason": "Invalid signature",
+                })
+                continue
+
+            sender = get_user_by_id(message["sender_id"])
+            if message["deleted"]:
+                results.append({
+                    "message_id": message["id"],
+                    "sender_username": sender["username"] if sender else "Unknown",
+                    "sequence_number": sequence_number,
+                    "key_version": message["key_version"],
+                    "status": "deleted",
+                    "message": "This message was deleted by an admin.",
                 })
                 continue
 
@@ -1048,6 +1260,8 @@ def receive_messages(group_id: int):
             )
 
             results.append({
+                "message_id": message["id"],
+                "sender_username": sender["username"] if sender else "Unknown",
                 "sequence_number": sequence_number,
                 "key_version": message["key_version"],
                 "status": "verified",
@@ -1055,7 +1269,10 @@ def receive_messages(group_id: int):
             })
 
         except Exception:
+            sender = get_user_by_id(message["sender_id"])
             results.append({
+                "message_id": message["id"],
+                "sender_username": sender["username"] if sender else "Unknown",
                 "sequence_number": sequence_number,
                 "status": "rejected",
                 "reason": "Message verification or decryption failed",
