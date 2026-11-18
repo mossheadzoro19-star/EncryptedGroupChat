@@ -999,18 +999,11 @@ def send_message(message_data: SendMessage):
 def receive_messages(group_id: int):
     messages = get_group_messages(group_id)
     results = []
-    highest_sequence = get_highest_sequence(group_id)
 
+    # Reading stored history is not a new message submission. Do not apply
+    # the inbound replay high-water mark while rendering existing messages.
     for message in messages:
         sequence_number = message["sequence_number"]
-
-        if sequence_number <= highest_sequence:
-            results.append({
-                "sequence_number": sequence_number,
-                "status": "rejected",
-                "reason": "Replay or duplicate message",
-            })
-            continue
 
         try:
             group_key = load_group_key(group_id, message["key_version"])
@@ -1053,9 +1046,6 @@ def receive_messages(group_id: int):
                 message["ciphertext"],
                 message["nonce"],
             )
-
-            update_highest_sequence(group_id, sequence_number)
-            highest_sequence = sequence_number
 
             results.append({
                 "sequence_number": sequence_number,
