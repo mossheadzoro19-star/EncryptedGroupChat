@@ -478,6 +478,56 @@ def list_groups():
 
 
 # -------------------------------------------------
+# GROUP DIRECTORY FOR LOGGED-IN USER
+# -------------------------------------------------
+
+@app.get("/groups/discover/{username}")
+def discover_groups(username: str):
+    user = get_user(username)
+    if user is None:
+        return {"status": "rejected", "message": "User does not exist"}
+
+    connection = get_connection()
+    try:
+        rows = connection.execute(
+            """
+            SELECT
+                g.id AS group_id,
+                g.name AS group_name,
+                g.key_version,
+                COUNT(CASE WHEN gm.active = 1 THEN 1 END) AS active_members,
+                own.role AS my_role,
+                COALESCE(jr.status, '') AS request_status
+            FROM groups g
+            LEFT JOIN group_members gm ON gm.group_id = g.id
+            LEFT JOIN group_members own
+                ON own.group_id = g.id AND own.user_id = ? AND own.active = 1
+            LEFT JOIN join_requests jr
+                ON jr.group_id = g.id AND jr.user_id = ?
+            GROUP BY g.id, g.name, g.key_version, own.role, jr.status
+            ORDER BY g.id DESC
+            """,
+            (user["id"], user["id"]),
+        ).fetchall()
+
+        return {
+            "groups": [
+                {
+                    "group_id": row["group_id"],
+                    "group_name": row["group_name"],
+                    "key_version": row["key_version"],
+                    "active_members": row["active_members"],
+                    "my_role": row["my_role"] or "none",
+                    "request_status": row["request_status"] or None,
+                }
+                for row in rows
+            ]
+        }
+    finally:
+        connection.close()
+
+
+# -------------------------------------------------
 # ACTIVE MEMBER COUNT
 # -------------------------------------------------
 
