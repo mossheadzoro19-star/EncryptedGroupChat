@@ -1112,7 +1112,7 @@ def change_member_role(change: GroupRoleChange):
         cursor = connection.execute(
             """
             UPDATE group_members
-            SET role = ?, can_add_members = CASE WHEN ? = 'admin' THEN 1 ELSE can_add_members END
+            SET role = ?, can_add_members = CASE WHEN ? = 'admin' THEN 1 ELSE 0 END
             WHERE group_id = ? AND user_id = ? AND active = 1
             """,
             (role, role, change.group_id, target["id"]),
