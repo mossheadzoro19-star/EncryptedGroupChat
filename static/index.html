@@ -369,6 +369,9 @@ let currentUsername = "";
 let currentGroupId = null;
 let currentGroupName = "";
 let currentRole = "none";
+let messagePollTimer = null;
+let messagesLoading = false;
+let lastRenderedMessageSignature = "";
 
 async function apiRequest(path, options = {}) {
     const response = await fetch(API_URL + path, options);
@@ -418,6 +421,7 @@ function showLogin() {
 }
 
 function logout() {
+    stopMessagePolling();
     currentUsername = "";
     currentGroupId = null;
     currentGroupName = "";
@@ -674,6 +678,7 @@ async function openGroup(groupId, groupName = "") {
         await refreshGroupInfo();
         await checkKeyStatus();
         await loadMessages();
+        startMessagePolling();
     } catch (error) {
         setStatus("Could not open group: " + error.message);
     }
@@ -1004,18 +1009,52 @@ function handleEnter(event) {
     }
 }
 
-async function loadMessages() {
-    if (!currentGroupId) {
-        setStatus("Open a group first.");
-        return;
-    }
+function startMessagePolling() {
+    stopMessagePolling();
+    if (!currentGroupId) return;
 
+    // Poll only while this chat is visible. This keeps the two browser sessions
+    // in sync without requiring a manual refresh.
+    messagePollTimer = setInterval(() => {
+        const chatVisible =
+            !document.getElementById("chatSection").classList.contains("hidden");
+        if (!document.hidden && chatVisible) {
+            loadMessages({silent: true});
+        }
+    }, 2000);
+}
+
+function stopMessagePolling() {
+    if (messagePollTimer !== null) {
+        clearInterval(messagePollTimer);
+        messagePollTimer = null;
+    }
+}
+
+async function loadMessages(options = {}) {
+    if (!currentGroupId || messagesLoading) return;
+
+    const requestedGroupId = currentGroupId;
     const container = document.getElementById("messages");
-    container.replaceChildren();
+    messagesLoading = true;
 
     try {
-        const data = await apiRequest(`/messages/${currentGroupId}`);
+        const data = await apiRequest(`/messages/${requestedGroupId}`);
+        if (requestedGroupId !== currentGroupId) return;
+
         const messages = data.messages || [];
+        const signature = JSON.stringify(messages.map(message => [
+            message.sequence_number, message.key_version, message.status,
+            message.message, message.reason
+        ]));
+
+        // Do not tear down/recreate the chat DOM on every poll. Only redraw
+        // when the server's message history actually changes.
+        if (signature === lastRenderedMessageSignature) return;
+
+        const wasNearBottom =
+            container.scrollHeight - container.scrollTop - container.clientHeight < 80;
+        container.replaceChildren();
 
         if (!messages.length) {
             const empty = document.createElement("p");
@@ -1023,40 +1062,56 @@ async function loadMessages() {
             empty.style.textAlign = "center";
             empty.textContent = "No messages to display yet. Send the first one ♡";
             container.appendChild(empty);
-            return;
-        }
+        } else {
+            for (const message of messages) {
+                const bubble = document.createElement("div");
+                bubble.className = "message";
+                bubble.dataset.sequence = String(message.sequence_number);
 
-        for (const message of messages) {
-            const bubble = document.createElement("div");
-            bubble.className = "message";
+                const header = document.createElement("div");
+                header.className = "message-header";
 
-            const header = document.createElement("div");
-            header.className = "message-header";
+                const body = document.createElement("div");
+                body.className = "message-text";
 
-            const body = document.createElement("div");
-            body.className = "message-text";
+                if (message.status === "verified") {
+                    header.classList.add("verified");
+                    header.textContent =
+                        "✓ Verified · Sequence " + message.sequence_number +
+                        " · Key v" + message.key_version;
+                    body.textContent = message.message || "";
+                } else {
+                    header.classList.add("rejected");
+                    header.textContent = "⚠ Message rejected";
+                    body.textContent = message.reason || "Verification failed.";
+                }
 
-            if (message.status === "verified") {
-                header.classList.add("verified");
-                header.textContent =
-                    "✓ Verified · Sequence " + message.sequence_number +
-                    " · Key v" + message.key_version;
-                body.textContent = message.message || "";
-            } else {
-                header.classList.add("rejected");
-                header.textContent = "⚠ Message rejected";
-                body.textContent = message.reason || "Verification failed.";
+                bubble.append(header, body);
+                container.appendChild(bubble);
             }
-
-            bubble.append(header, body);
-            container.appendChild(bubble);
         }
 
-        container.scrollTop = container.scrollHeight;
+        lastRenderedMessageSignature = signature;
+        if (wasNearBottom || !options.silent) {
+            container.scrollTop = container.scrollHeight;
+        }
     } catch (error) {
-        setStatus("Could not load messages: " + error.message);
+        if (!options.silent) {
+            setStatus("Could not load messages: " + error.message);
+        }
+    } finally {
+        messagesLoading = false;
     }
 }
+
+// Stop background polling when the browser tab is closed or the user leaves
+// the chat; resume automatically when the tab becomes visible again.
+document.addEventListener("visibilitychange", () => {
+    if (!document.hidden && currentGroupId &&
+        !document.getElementById("chatSection").classList.contains("hidden")) {
+        loadMessages({silent: true});
+    }
+});
 </script>
 
 </body>
