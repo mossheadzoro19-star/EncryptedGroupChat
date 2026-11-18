@@ -1023,16 +1023,16 @@ async function loadGroupMembers() {
                         !member.can_add_members
                     );
                     actions.appendChild(permissionButton);
-
-                    const removeButton = document.createElement("button");
-                    removeButton.className = "danger";
-                    removeButton.textContent = "Remove";
-                    removeButton.onclick = async () => {
-                        document.getElementById("removeMemberUsername").value = member.username;
-                        await removeMember();
-                    };
-                    actions.appendChild(removeButton);
                 }
+
+                const removeButton = document.createElement("button");
+                removeButton.className = "danger";
+                removeButton.textContent = "Remove";
+                removeButton.onclick = async () => {
+                    document.getElementById("removeMemberUsername").value = member.username;
+                    await removeMember();
+                };
+                actions.appendChild(removeButton);
                 row.appendChild(actions);
             }
             container.appendChild(row);
